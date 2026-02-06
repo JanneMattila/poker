@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Texas Hold'em Poker</title>
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Main App Container -->
+    <div id="app">
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="screen">
+            <div class="loading-spinner"></div>
+            <h2>Loading Texas Hold'em Poker...</h2>
+        </div>
+
+        <!-- Welcome Screen -->
+        <div id="welcome-screen" class="screen hidden">
+            <div class="welcome-container">
+                <h1>Texas Hold'em Poker</h1>
+                <p>Play poker with friends online or locally</p>
+                
+                <div class="auth-section">
+                    <h3>Sign In</h3>
+                    <button id="microsoft-login-btn" class="btn btn-primary">
+                        Sign in with Microsoft
+                    </button>
+                    <div class="divider">or</div>
+                    <div class="guest-login">
+                        <input type="text" id="guest-name" placeholder="Enter your name" maxlength="20">
+                        <button id="guest-login-btn" class="btn btn-secondary">
+                            Play as Guest
+                        </button>
+                    </div>
+                </div>
+
+                <div class="game-mode-section">
+                    <h3>Game Modes</h3>
+                    <div class="mode-buttons">
+                        <button id="create-room-btn" class="mode-btn" disabled>
+                            <div class="mode-icon">🎯</div>
+                            <h4>Create Room</h4>
+                            <p>Host a game and invite friends</p>
+                        </button>
+                        <button id="join-room-btn" class="mode-btn" disabled>
+                            <div class="mode-icon">🔗</div>
+                            <h4>Join Room</h4>
+                            <p>Join an existing game</p>
+                        </button>
+                        <button id="browse-rooms-btn" class="mode-btn" disabled>
+                            <div class="mode-icon">🌐</div>
+                            <h4>Browse Rooms</h4>
+                            <p>Find public games</p>
+                        </button>
+                        <button id="local-game-btn" class="mode-btn">
+                            <div class="mode-icon">📱</div>
+                            <h4>Local Game</h4>
+                            <p>Offline multiplayer</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Room Screen -->
+        <div id="create-room-screen" class="screen hidden">
+            <div class="form-container">
+                <h2>Create New Room</h2>
+                <form id="create-room-form">
+                    <div class="form-group">
+                        <label for="room-name">Room Name</label>
+                        <input type="text" id="room-name" required maxlength="50">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="max-players">Maximum Players</label>
+                        <select id="max-players">
+                            <option value="2">2 Players</option>
+                            <option value="3">3 Players</option>
+                            <option value="4">4 Players</option>
+                            <option value="5">5 Players</option>
+                            <option value="6" selected>6 Players</option>
+                            <option value="7">7 Players</option>
+                            <option value="8">8 Players</option>
+                            <option value="9">9 Players</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="starting-chips">Starting Chips</label>
+                        <input type="number" id="starting-chips" value="1000" min="100" max="100000" step="100">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="small-blind">Small Blind</label>
+                        <input type="number" id="small-blind" value="10" min="1" max="1000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="big-blind">Big Blind</label>
+                        <input type="number" id="big-blind" value="20" min="2" max="2000">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="visibility">Room Visibility</label>
+                        <select id="visibility">
+                            <option value="public">Public - Anyone can join</option>
+                            <option value="private">Private - Invite only</option>
+                            <option value="friends-only">Friends Only</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="password-protected">
+                            Password Protected
+                        </label>
+                        <input type="password" id="room-password" placeholder="Enter password" class="hidden">
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="spectating-allowed" checked>
+                            Allow Spectators
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="back-to-welcome" class="btn btn-secondary">Back</button>
+                        <button type="submit" class="btn btn-primary">Create Room</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Join Room Screen -->
+        <div id="join-room-screen" class="screen hidden">
+            <div class="form-container">
+                <h2>Join Room by Invite Code</h2>
+                <form id="join-room-form">
+                    <div class="form-group">
+                        <label for="invite-code">Invite Code</label>
+                        <input type="text" id="invite-code" required maxlength="6" placeholder="Enter 6-digit code">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="join-password">Password (if required)</label>
+                        <input type="password" id="join-password" placeholder="Enter room password">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="back-to-welcome-join" class="btn btn-secondary">Back</button>
+                        <button type="submit" class="btn btn-primary">Join Room</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Browse Rooms Screen -->
+        <div id="browse-rooms-screen" class="screen hidden">
+            <div class="browse-container">
+                <div class="browse-header">
+                    <h2>Public Rooms</h2>
+                    <button id="refresh-rooms" class="btn btn-secondary">Refresh</button>
+                    <button id="back-to-welcome-browse" class="btn btn-secondary">Back</button>
+                </div>
+                
+                <div class="rooms-list" id="rooms-list">
+                    <!-- Dynamically populated -->
+                </div>
+                
+                <div class="pagination">
+                    <button id="prev-page" class="btn btn-secondary" disabled>Previous</button>
+                    <span id="page-info">Page 1 of 1</span>
+                    <button id="next-page" class="btn btn-secondary" disabled>Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Game Setup Screen -->
+        <div id="local-game-screen" class="screen hidden">
+            <div class="form-container">
+                <h2>Local Game Setup</h2>
+                <form id="local-game-form">
+                    <div class="form-group">
+                        <label for="local-player-count">Number of Players</label>
+                        <select id="local-player-count">
+                            <option value="2">2 Players</option>
+                            <option value="3">3 Players</option>
+                            <option value="4" selected>4 Players</option>
+                            <option value="5">5 Players</option>
+                            <option value="6">6 Players</option>
+                        </select>
+                    </div>
+                    <div id="local-player-names">
+                        <!-- Populated dynamically -->
+                    </div>
+                    <div class="form-group">
+                        <label for="local-starting-chips">Starting Chips</label>
+                        <input type="number" id="local-starting-chips" value="1000" min="100" max="100000" step="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="local-small-blind">Small Blind</label>
+                        <input type="number" id="local-small-blind" value="10" min="1" max="1000">
+                    </div>
+                    <div class="form-group">
+                        <label for="local-big-blind">Big Blind</label>
+                        <input type="number" id="local-big-blind" value="20" min="2" max="2000">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" id="back-to-welcome-local" class="btn btn-secondary">Back</button>
+                        <button type="submit" class="btn btn-primary">Start Game</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Local Game Play Screen -->
+        <div id="local-play-screen" class="screen hidden">
+            <!-- Hamburger Menu -->
+            <div class="hamburger-menu" id="local-hamburger-menu">
+                <button class="hamburger-btn" id="local-hamburger-btn" aria-label="Menu">
+                    <span class="hamburger-icon">&#9776;</span>
+                </button>
+                <div class="hamburger-panel hidden" id="local-hamburger-panel">
+                    <div class="hamburger-header">
+                        <h3>Local Game</h3>
+                        <button class="hamburger-close" id="local-hamburger-close">&times;</button>
+                    </div>
+                    <div class="hamburger-content">
+                        <div class="hamburger-info">
+                            <div class="info-item">
+                                <span>Hand #:</span>
+                                <span id="local-menu-hand">0</span>
+                            </div>
+                            <div class="info-item">
+                                <span>Phase:</span>
+                                <span id="local-menu-phase">Waiting</span>
+                            </div>
+                            <div class="info-item">
+                                <span>Dealer:</span>
+                                <span id="local-menu-dealer">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span>Small Blind:</span>
+                                <span id="local-menu-sb">$10</span>
+                            </div>
+                            <div class="info-item">
+                                <span>Big Blind:</span>
+                                <span id="local-menu-bb">$20</span>
+                            </div>
+                        </div>
+                        <div class="hamburger-actions">
+                            <button id="local-leave-btn" class="btn btn-secondary hamburger-leave-btn">Leave Game</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Turn Banner -->
+            <div class="turn-banner" id="turn-banner">
+                <h2 id="turn-player-name">Player 1's Turn</h2>
+                <p id="turn-info-text">Tap your cards to peek, then choose an action.</p>
+            </div>
+
+            <!-- Main Game Content (same structure as online room) -->
+            <div class="game-content">
+                <div class="game-area">
+                    <!-- Poker Table -->
+                    <div class="poker-table">
+                        <!-- Community Cards -->
+                        <div class="community-cards">
+                            <div class="card-container" id="local-community-cards">
+                                <!-- Filled dynamically with peekable cards -->
+                            </div>
+                            <div class="pot-display">
+                                <div class="pot-money" id="local-pot-money">
+                                    <!-- Coins and bills rendered dynamically -->
+                                </div>
+                                <div class="pot-info">
+                                    <div class="pot-amount">Pot: $<span id="local-pot">0</span></div>
+                                    <div class="current-bet">Bet: $<span id="local-current-bet">0</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Player Seats (filled dynamically) -->
+                        <div class="player-seats" id="local-player-seats"></div>
+                    </div>
+
+                    <!-- Player Hand and Actions -->
+                    <div class="player-area" id="local-player-area">
+                        <div class="player-hand">
+                            <div class="hole-cards" id="local-hole-cards">
+                                <!-- Peekable hole cards (both flip together) -->
+                            </div>
+                            <div class="player-stats">
+                                <div class="chip-stack">Chips: $<span id="local-player-chips">0</span></div>
+                                <div class="player-bet">Bet: $<span id="local-player-bet">0</span></div>
+                            </div>
+                        </div>
+
+                        <div class="action-controls" id="local-action-controls">
+                            <div class="raise-presets" id="local-raise-presets">
+                                <!-- Populated dynamically -->
+                            </div>
+                            <div class="bet-amount-row">
+                                <span class="bet-amount-currency">$</span>
+                                <input type="number" id="local-bet-amount" min="0" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button id="local-fold-btn" class="action-btn">Fold</button>
+                                <button id="local-check-call-btn" class="action-btn">Check</button>
+                                <button id="local-bet-raise-btn" class="action-btn">Bet</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Showdown Overlay -->
+            <div class="local-showdown hidden" id="local-showdown">
+                <h3 id="local-winner-text">Winner!</h3>
+                <div class="local-showdown-cards" id="local-showdown-cards"></div>
+                <button id="local-next-hand-btn" class="btn btn-primary">Next Hand</button>
+            </div>
+        </div>
+
+        <!-- Game Room Screen -->
+        <div id="game-room-screen" class="screen hidden">
+            <!-- Room Header -->
+            <div class="room-header">
+                <div class="room-info">
+                    <h2 id="room-title">Room Name</h2>
+                    <div class="room-details">
+                        <span id="room-players">2 / 6 players</span>
+                        <span id="room-status">Waiting</span>
+                        <button id="invite-players" class="btn btn-sm" title="Click to copy invite code">Invite Code: <span id="room-invite-code">ABC123</span></button>
+                    </div>
+                </div>
+                <div class="room-actions">
+                    <button id="toggle-ready" class="btn btn-primary" disabled>Ready</button>
+                    <button id="start-game" class="btn btn-success hidden">Start Game</button>
+                    <button id="leave-room" class="btn btn-secondary">Leave</button>
+                </div>
+            </div>
+
+            <!-- Main Game Content (table + side panel) -->
+            <div class="game-content">
+            <!-- Main Game Area -->
+            <div class="game-area">
+                <!-- Poker Table -->
+                <div class="poker-table">
+                    <!-- Community Cards -->
+                    <div class="community-cards">
+                        <div class="card-container">
+                            <div class="card hidden" id="community-1"></div>
+                            <div class="card hidden" id="community-2"></div>
+                            <div class="card hidden" id="community-3"></div>
+                            <div class="card hidden" id="community-4"></div>
+                            <div class="card hidden" id="community-5"></div>
+                        </div>
+                        <div class="pot-display">
+                            <div class="pot-money" id="online-pot-money">
+                                <!-- Coins and bills rendered dynamically -->
+                            </div>
+                            <div class="pot-info">
+                                <div class="pot-amount">Pot: $<span id="pot-amount">0</span></div>
+                                <div class="current-bet">Bet: $<span id="current-bet">0</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player Seats -->
+                    <div class="player-seats">
+                        <div class="player-seat" id="seat-0" data-position="0"></div>
+                        <div class="player-seat" id="seat-1" data-position="1"></div>
+                        <div class="player-seat" id="seat-2" data-position="2"></div>
+                        <div class="player-seat" id="seat-3" data-position="3"></div>
+                        <div class="player-seat" id="seat-4" data-position="4"></div>
+                        <div class="player-seat" id="seat-5" data-position="5"></div>
+                        <div class="player-seat" id="seat-6" data-position="6"></div>
+                        <div class="player-seat" id="seat-7" data-position="7"></div>
+                        <div class="player-seat" id="seat-8" data-position="8"></div>
+                    </div>
+                </div>
+
+                <!-- Player Hand and Actions -->
+                <div class="player-area">
+                    <div class="player-hand">
+                        <div class="hole-cards">
+                            <div class="card" id="hole-card-1"></div>
+                            <div class="card" id="hole-card-2"></div>
+                        </div>
+                        <div class="player-stats">
+                            <div class="chip-stack">Chips: $<span id="player-chips">1000</span></div>
+                            <div class="player-bet">Bet: $<span id="player-bet">0</span></div>
+                        </div>
+                    </div>
+
+                    <div class="action-controls hidden" id="action-controls">
+                        <div class="bet-controls">
+                            <input type="range" id="bet-slider" min="0" max="1000" value="0">
+                            <input type="number" id="bet-amount" min="0" max="1000" value="0">
+                            <div class="quick-bets">
+                                <button class="quick-bet" data-type="min">Min</button>
+                                <button class="quick-bet" data-type="quarter">1/4 Pot</button>
+                                <button class="quick-bet" data-type="half">1/2 Pot</button>
+                                <button class="quick-bet" data-type="pot">Pot</button>
+                                <button class="quick-bet" data-type="all-in">All In</button>
+                            </div>
+                        </div>
+                        <div class="action-buttons">
+                            <button id="fold-btn" class="action-btn">Fold</button>
+                            <button id="check-call-btn" class="action-btn">Check</button>
+                            <button id="bet-raise-btn" class="action-btn">Bet</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="side-panel">
+                <!-- Game Info -->
+                <div class="game-info">
+                    <div class="game-info-header" id="game-info-toggle">
+                        <h3>Game Info</h3>
+                        <span class="collapse-icon">&#9660;</span>
+                    </div>
+                    <div class="game-info-content" id="game-info-content">
+                        <div class="info-item">
+                            <span>Hand #:</span>
+                            <span id="hand-number">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Game Phase:</span>
+                            <span id="game-phase">Waiting</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Dealer:</span>
+                            <span id="dealer-name">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Small Blind:</span>
+                            <span id="small-blind-amount">$10</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Big Blind:</span>
+                            <span id="big-blind-amount">$20</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div> <!-- end .game-content -->
+        </div>
+    </div>
+
+    <!-- Modals and Overlays -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal" id="error-modal">
+            <div class="modal-header">
+                <h3>Error</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="error-message">An error occurred.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="error-ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>
