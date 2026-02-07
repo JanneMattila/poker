@@ -1,10 +1,10 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Deploys the GymLogger application to Azure App Service.
+    Deploys the Texas Hold'em Poker application to Azure App Service.
 
 .DESCRIPTION
-    This script builds the application, creates a deployment package, and deploys it to Azure App Service.
+    This script builds the Node.js application, creates a deployment package, and deploys it to Azure App Service.
     Requires Azure CLI to be installed and authenticated (az login).
 
 .PARAMETER AppName
@@ -13,41 +13,37 @@
 .PARAMETER ResourceGroup
     The name of the Azure Resource Group containing the App Service.
 
-.PARAMETER BuildConfiguration
-    The build configuration to use (Debug or Release). Default: Release
-
 .PARAMETER SkipBuild
-    Skip the build step and use existing published files.
+    Skip the build step and use existing dist files.
 
 .PARAMETER WhatIf
     Show what would be deployed without actually deploying.
 
 .EXAMPLE
-    .\deploy-to-azure.ps1 -AppName "gymlogger" -ResourceGroup "rg-app-services"
+    .\deploy-to-azure.ps1 -AppName "poker-app" -ResourceGroup "rg-poker"
 
 .EXAMPLE
-    .\deploy-to-azure.ps1 -AppName "gymlogger-dev" -ResourceGroup "rg-dev" -BuildConfiguration Debug
+    .\deploy-to-azure.ps1 -AppName "poker-dev" -ResourceGroup "rg-dev" -SkipBuild
 
 .EXAMPLE
-    .\deploy-to-azure.ps1 -AppName "gymlogger" -ResourceGroup "rg-app-services" -WhatIf
+    .\deploy-to-azure.ps1 -AppName "poker-app" -ResourceGroup "rg-poker" -WhatIf
 #>
 
 param(
     [Parameter(Mandatory = $false, HelpMessage = "Azure App Service name")]
-    [string]$AppName = "gymlogger",
+    [string]$AppName = "poker-app",
     
     [Parameter(Mandatory = $false, HelpMessage = "Azure Resource Group name")]
-    [string]$ResourceGroup = "rg-app-services",
-    
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("Debug", "Release")]
-    [string]$BuildConfiguration = "Release",
+    [string]$ResourceGroup = "rg-poker",
     
     [Parameter(Mandatory = $false)]
     [switch]$SkipBuild,
     
     [Parameter(Mandatory = $false)]
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    
+    [Parameter(Mandatory = $false, HelpMessage = "Skip interactive prompts (for CI/CD)")]
+    [switch]$NonInteractive
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,7 +74,7 @@ Write-Host @"
 
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║      GymLogger - Azure App Service Deployment            ║
+║      Texas Hold'em Poker - Azure Deployment              ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 
@@ -86,7 +82,6 @@ Write-Host @"
 
 Write-Info "App Service: $AppName"
 Write-Info "Resource Group: $ResourceGroup"
-Write-Info "Configuration: $BuildConfiguration"
 Write-Info "WhatIf Mode: $WhatIf"
 Write-Host ""
 
@@ -97,6 +92,15 @@ try {
     Write-Success "Azure CLI version $($azVersion.'azure-cli') found"
 } catch {
     Write-Error "Azure CLI not found. Please install from: https://aka.ms/installazurecliwindows"
+    exit 1
+}
+
+# Check if Node.js is installed
+try {
+    $nodeVersion = node --version
+    Write-Success "Node.js $nodeVersion found"
+} catch {
+    Write-Error "Node.js not found. Please install from: https://nodejs.org/"
     exit 1
 }
 
@@ -118,7 +122,6 @@ try {
     Write-Success "App Service found: $($appService.defaultHostName)"
     Write-Info "Location: $($appService.location)"
     Write-Info "Plan: $($appService.appServicePlanName)"
-    Write-Info "Runtime: $($appService.siteConfig.linuxFxVersion -replace 'DOTNETCORE', '.NET ')"
 } catch {
     Write-Error "App Service '$AppName' not found in resource group '$ResourceGroup'"
     Write-Info "Available app services:"
@@ -132,82 +135,39 @@ if ($WhatIf) {
     exit 0
 }
 
-# Build the application
+# Install dependencies and build
 if (-not $SkipBuild) {
+    Write-Step "Installing dependencies..."
+    npm ci --silent
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to install dependencies"
+        exit 1
+    }
+    Write-Success "Dependencies installed"
+    
     Write-Step "Building application..."
     
-    # Change to project directory
-    Push-Location "GymLogger"
-    
     # Clean previous builds
-    if (Test-Path "bin") {
-        Remove-Item -Path "bin" -Recurse -Force
-        Write-Info "Cleaned bin folder"
-    }
-    if (Test-Path "obj") {
-        Remove-Item -Path "obj" -Recurse -Force
-        Write-Info "Cleaned obj folder"
+    if (Test-Path "dist") {
+        Remove-Item -Path "dist" -Recurse -Force
+        Write-Info "Cleaned dist folder"
     }
     
-    # Restore dependencies
-    Write-Info "Restoring NuGet packages..."
-    dotnet restore --verbosity quiet
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to restore NuGet packages"
-        Pop-Location
-        exit 1
-    }
-    
-    # Build
-    Write-Info "Building $BuildConfiguration configuration..."
-    dotnet build --configuration $BuildConfiguration --no-restore --verbosity quiet
+    # Build client with Vite
+    npm run build
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Build failed"
-        Pop-Location
         exit 1
     }
-    Write-Success "Build completed successfully"
-    
-    # Publish
-    Write-Step "Publishing application..."
-    $publishPath = "bin/publish"
-    
-    if (Test-Path $publishPath) {
-        Remove-Item -Path $publishPath -Recurse -Force
-    }
-    
-    dotnet publish --configuration $BuildConfiguration --output $publishPath --no-build --verbosity quiet
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Publish failed"
-        Pop-Location
-        exit 1
-    }
-    Write-Success "Published to: $publishPath"
-    
-    # Verify no database files are included
-    Write-Info "Verifying database exclusion..."
-    $dbFiles = Get-ChildItem -Path $publishPath -Filter "*.db" -Recurse
-    if ($dbFiles) {
-        Write-Error "Database files found in publish directory - these should not be deployed!"
-        $dbFiles | ForEach-Object { Write-Info "  $_" }
-        Pop-Location
-        exit 1
-    }
-    Write-Success "No database files in deployment (production DB will be preserved)"
-    
-    # Return to original directory and update path
-    Pop-Location
-    $publishPath = "GymLogger/bin/publish"
+    Write-Success "Client build completed"
 } else {
     Write-Step "Skipping build (using existing files)..."
-    $publishPath = "GymLogger/bin/publish"
     
-    if (-not (Test-Path $publishPath)) {
-        Write-Error "Published files not found at: $publishPath"
-        Write-Info "Run without -SkipBuild to build the application first"
+    if (-not (Test-Path "dist")) {
+        Write-Error "dist folder not found. Run without -SkipBuild to build the application first"
         exit 1
     }
-    Write-Success "Using existing published files"
+    Write-Success "Using existing build files"
 }
 
 # Create deployment package
@@ -219,21 +179,43 @@ if (Test-Path $zipFullPath) {
     Remove-Item -Path $zipFullPath -Force
 }
 
-# Change to publish directory and create zip
-$currentLocation = Get-Location
-Set-Location $publishPath
+# Create a temporary staging folder with only needed files
+$stagingPath = Join-Path (Get-Location) ".deploy-staging"
+if (Test-Path $stagingPath) {
+    Remove-Item -Path $stagingPath -Recurse -Force
+}
+New-Item -ItemType Directory -Path $stagingPath | Out-Null
 
+# Copy required files
+Copy-Item -Path "dist" -Destination "$stagingPath\dist" -Recurse
+Copy-Item -Path "src\server" -Destination "$stagingPath\src\server" -Recurse
+Copy-Item -Path "src\shared" -Destination "$stagingPath\src\shared" -Recurse
+Copy-Item -Path "package.json" -Destination "$stagingPath\package.json"
+Copy-Item -Path "package-lock.json" -Destination "$stagingPath\package-lock.json" -ErrorAction SilentlyContinue
+
+# Create production startup script
+@"
+{
+  "scripts": {
+    "start": "node src/server/server.js"
+  }
+}
+"@ | Out-File -FilePath "$stagingPath\web.config.json" -Encoding utf8
+
+Write-Info "Staging folder created"
+
+# Create zip from staging
 try {
-    $zipDestination = Join-Path $currentLocation $zipPath
-    Compress-Archive -Path ".\*" -DestinationPath $zipDestination -Force
+    Compress-Archive -Path "$stagingPath\*" -DestinationPath $zipFullPath -Force
     Write-Success "Deployment package created: $zipPath"
 } catch {
     Write-Error "Failed to create deployment package: $_"
-    Set-Location $currentLocation
+    Remove-Item -Path $stagingPath -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
 }
 
-Set-Location $currentLocation
+# Clean up staging
+Remove-Item -Path $stagingPath -Recurse -Force
 
 $zipSize = (Get-Item $zipFullPath).Length / 1MB
 Write-Info "Package size: $([math]::Round($zipSize, 2)) MB"
@@ -243,7 +225,6 @@ Write-Step "Deploying to Azure App Service..."
 Write-Info "This may take a few minutes..."
 
 try {
-    # Deploy using az webapp deployment
     az webapp deploy `
         --resource-group $ResourceGroup `
         --name $AppName `
@@ -263,7 +244,7 @@ try {
     exit 1
 }
 
-# Wait a moment for deployment to start
+# Wait for deployment to start
 Write-Info "Waiting for deployment to process..."
 Start-Sleep -Seconds 5
 
@@ -304,25 +285,21 @@ Write-Host @"
 Write-Host "Application URL: " -NoNewline
 Write-Host "https://$($appService.defaultHostName)" -ForegroundColor Cyan
 
-Write-Host "`nDatabase Information:" -ForegroundColor Yellow
-Write-Host "  • Production database location: /home/data/gymlogger.db"
-Write-Host "  • Database is NOT overwritten by deployment"
-Write-Host "  • Existing data is preserved across deployments"
-Write-Host "  • Migrations run automatically on app startup"
-
 Write-Host "`nUseful commands:"
-Write-Host "  View logs:     " -NoNewline
+Write-Host "  View logs:       " -NoNewline
 Write-Host "az webapp log tail --name $AppName --resource-group $ResourceGroup" -ForegroundColor Yellow
 Write-Host "  Open in browser: " -NoNewline
 Write-Host "az webapp browse --name $AppName --resource-group $ResourceGroup" -ForegroundColor Yellow
-Write-Host "  SSH to container: " -NoNewline
+Write-Host "  SSH to container:" -NoNewline
 Write-Host "az webapp ssh --name $AppName --resource-group $ResourceGroup" -ForegroundColor Yellow
 Write-Host ""
 
 # Open browser option
-$openBrowser = Read-Host "Open application in browser? (y/N)"
-if ($openBrowser -eq 'y' -or $openBrowser -eq 'Y') {
-    az webapp browse --name $AppName --resource-group $ResourceGroup
+if (-not $NonInteractive) {
+    $openBrowser = Read-Host "Open application in browser? (y/N)"
+    if ($openBrowser -eq 'y' -or $openBrowser -eq 'Y') {
+        az webapp browse --name $AppName --resource-group $ResourceGroup
+    }
 }
 
 Write-Success "Deployment script completed successfully!"

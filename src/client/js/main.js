@@ -27,6 +27,9 @@ class PokerApp {
             // Show loading screen
             this.ui.showScreen('loading', false);
             
+            // Initialize network status detection
+            this.setupNetworkDetection();
+            
             // Initialize components
             await this.setupEventListeners();
             await this.initializeAuth();
@@ -43,28 +46,79 @@ class PokerApp {
         }
     }
 
-    handleRoute() {
-        const hash = window.location.hash.replace('#', '');
-        const validScreens = ['welcome', 'create-room', 'join-room', 'browse-rooms', 'local-game'];
+    setupNetworkDetection() {
+        // Initial check
+        this.updateNetworkStatus();
 
-        if (hash.startsWith('room/')) {
-            // URL like #room/INVITE_CODE — auto-join by invite code
-            const inviteCode = hash.split('/')[1];
-            if (inviteCode) {
-                document.getElementById('invite-code').value = inviteCode;
-                this.ui.showScreen('join-room', false);
-                return;
-            }
+        // Listen for online/offline events
+        window.addEventListener('online', () => this.updateNetworkStatus());
+        window.addEventListener('offline', () => this.updateNetworkStatus());
+    }
+
+    updateNetworkStatus() {
+        const isOnline = navigator.onLine;
+        const body = document.body;
+        const statusBanner = document.getElementById('network-status');
+
+        if (isOnline) {
+            body.classList.remove('offline');
+            if (statusBanner) statusBanner.classList.add('hidden');
+        } else {
+            body.classList.add('offline');
+            if (statusBanner) statusBanner.classList.remove('hidden');
         }
 
-        if (hash === 'local-game') {
+        // Update online-only button states
+        const onlineButtons = document.querySelectorAll('.online-only');
+        onlineButtons.forEach(btn => {
+            if (isOnline && this.currentUser) {
+                btn.disabled = false;
+            } else if (!isOnline) {
+                btn.disabled = true;
+            }
+        });
+    }
+
+    handleRoute() {
+        const path = window.location.pathname;
+
+        // URL like /rooms/join/INVITE_CODE — auto-join by invite code
+        const joinMatch = path.match(/^\/rooms\/join\/([A-Za-z0-9]+)$/);
+        if (joinMatch) {
+            document.getElementById('invite-code').value = joinMatch[1].toUpperCase();
+            this.ui.showScreen('join-room', false);
+            return;
+        }
+
+        // URL like /rooms/ROOM_ID — active game room
+        const roomMatch = path.match(/^\/rooms\/([A-Za-z0-9]+)$/);
+        if (roomMatch && !['create', 'join', 'browse'].includes(roomMatch[1])) {
+            // Could reconnect to room — for now show welcome
+            this.ui.showScreen('welcome', false);
+            return;
+        }
+
+        // Map path to screen
+        const screenId = PokerUI.PATH_TO_SCREEN[path];
+
+        if (screenId === 'local-game') {
             this.startLocalGame();
             return;
         }
 
-        if (validScreens.includes(hash)) {
-            this.ui.showScreen(hash, false);
-            if (hash === 'browse-rooms') {
+        if (screenId === 'local-play') {
+            if (this.localGame) {
+                this.ui.showScreen('local-play', false);
+            } else {
+                // No active game — redirect to setup
+                this.startLocalGame();
+            }
+            return;
+        }
+
+        if (screenId) {
+            this.ui.showScreen(screenId, false);
+            if (screenId === 'browse-rooms') {
                 this.loadPublicRooms();
             }
         } else {
@@ -285,14 +339,8 @@ class PokerApp {
 
     updateUIForUser() {
         if (this.currentUser) {
-            // Enable buttons that require authentication
-            document.getElementById('create-room-btn').disabled = false;
-            document.getElementById('join-room-btn').disabled = false;
-            document.getElementById('browse-rooms-btn').disabled = false;
-            
-            // Update welcome message
-            const welcomeMsg = document.querySelector('.welcome-container p');
-            welcomeMsg.textContent = `Welcome back, ${this.currentUser.displayName}!`;
+            // Update button states (respects network status)
+            this.updateNetworkStatus();
         }
     }
 
@@ -307,7 +355,7 @@ class PokerApp {
 
             // Update URL with invite code for sharing
             if (room.inviteCode) {
-                window.history.replaceState(null, '', `#room/${room.inviteCode}`);
+                this.navigateToRoom(room.inviteCode);
             }
         } catch (error) {
             console.error('Failed to create room:', error);
@@ -344,7 +392,7 @@ class PokerApp {
             this.ui.updateRoomInfo(room);
 
             // Update URL with invite code for sharing
-            window.history.replaceState(null, '', `#room/${inviteCode}`);
+            this.navigateToRoom(inviteCode);
         } catch (error) {
             console.error('Failed to join room:', error);
             this.ui.showError(error.message || 'Failed to join room');
@@ -416,6 +464,11 @@ class PokerApp {
         } else {
             this.ui.showScreen(screenId);
         }
+    }
+
+    navigateToRoom(inviteCode) {
+        const path = `/rooms/join/${inviteCode}`;
+        window.history.replaceState(null, '', path);
     }
 
     async playerAction(actionType, amount = 0) {
@@ -568,6 +621,8 @@ class PokerApp {
         this.localGame = new LocalGame(playerNames, settings);
         this.localGame.startGame();
         this._localPeeking = {}; // track which cards are currently shown face-up
+        this._localTrackedBets = {}; // track last known bet per player for incremental coin rendering
+        this._localCoinSeed = 42; // running seed so new coins get unique positions
 
         // Map player indices to seat positions for even distribution around table
         const seatMaps = {
@@ -578,6 +633,28 @@ class PokerApp {
             6: [0, 1, 3, 4, 5, 7]
         };
         this._localSeatMap = seatMaps[playerNames.length] || seatMaps[6];
+
+        // Create persistent seat elements (reused across renders for CSS transition)
+        const seatsContainer = document.getElementById('local-player-seats');
+        seatsContainer.innerHTML = '';
+        this._localSeatElements = playerNames.map((_, i) => {
+            const seat = document.createElement('div');
+            seat.className = 'player-seat occupied local-seat-animated';
+            seat.setAttribute('data-player-index', i);
+
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'player-name';
+            const chipsDiv = document.createElement('div');
+            chipsDiv.className = 'player-chips';
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'player-status';
+
+            seat.appendChild(nameDiv);
+            seat.appendChild(chipsDiv);
+            seat.appendChild(statusDiv);
+            seatsContainer.appendChild(seat);
+            return seat;
+        });
 
         this.ui.showScreen('local-play');
         this._setupLocalPlayEvents();
@@ -629,10 +706,7 @@ class PokerApp {
 
         // Hamburger menu toggle
         document.getElementById('local-hamburger-btn').onclick = () => {
-            document.getElementById('local-hamburger-panel').classList.remove('hidden');
-        };
-        document.getElementById('local-hamburger-close').onclick = () => {
-            document.getElementById('local-hamburger-panel').classList.add('hidden');
+            document.getElementById('local-hamburger-panel').classList.toggle('hidden');
         };
         // Close hamburger panel when clicking outside
         document.getElementById('local-play-screen').addEventListener('click', (e) => {
@@ -648,36 +722,90 @@ class PokerApp {
         try {
             const state = this.localGame.getState();
             const actorIndex = state.activePlayerIndex;
-            const actorSeatPos = this._localSeatMap[actorIndex];
+            const seatEl = this._localSeatElements[actorIndex];
 
+            // Capture seat position BEFORE game state changes (for accurate animation origin)
+            const seatRect = seatEl ? seatEl.getBoundingClientRect() : null;
+
+            // Execute the action in the game engine
             this.localGame.playerAction(actorIndex, actionType, amount);
             this._localPeeking = {}; // clear peeks on turn change
-            this._renderLocalState();
 
-            // Query the seat element AFTER render so it's still in the DOM
-            const seatEl = document.querySelector(
-                `#local-player-seats .player-seat[data-position="${actorSeatPos}"]`
-            );
-
-            // Animate money to pot on bet/call/raise
-            if (['call', 'bet', 'raise', 'all-in'].includes(actionType)) {
-                this._animateBetToPot(seatEl, 'local-pot-money');
-            }
-
-            // If showdown just happened, animate money to winner(s)
             const newState = this.localGame.getState();
-            if (newState.gamePhase === 'showdown' && newState.winners.length > 0) {
-                setTimeout(() => {
-                    newState.winners.forEach(w => {
-                        const winnerSeatEl = document.querySelector(
-                            `#local-player-seats .player-seat[data-position="${this._localSeatMap[w.playerIndex]}"]`
-                        );
-                        this._animateWinFromPot('local-pot-money', winnerSeatEl);
-                    });
-                }, 300);
+            const isShowdown = newState.gamePhase === 'showdown';
+
+            // ── Fold animation: cards fly to table center ──
+            if (actionType === 'fold' && seatRect) {
+                this._animateFoldCards(seatRect);
             }
+
+            // ── Money-to-pot animation (from pre-rotation position) ──
+            if (['call', 'bet', 'raise', 'all-in'].includes(actionType) && seatRect) {
+                const potEl = document.getElementById('local-pot-money');
+                if (potEl) {
+                    const potRect = potEl.getBoundingClientRect();
+                    const fly = document.createElement('span');
+                    fly.className = 'money-fly-to-pot';
+                    fly.textContent = '\uD83E\uDE99';
+                    fly.style.left = (seatRect.left + seatRect.width / 2) + 'px';
+                    fly.style.top = (seatRect.top + seatRect.height / 2) + 'px';
+                    fly.style.transition = 'left 0.5s ease-in, top 0.5s ease-in';
+                    document.body.appendChild(fly);
+                    requestAnimationFrame(() => {
+                        fly.style.left = (potRect.left + potRect.width / 2) + 'px';
+                        fly.style.top = (potRect.top + potRect.height / 2) + 'px';
+                    });
+                    setTimeout(() => fly.remove(), 650);
+                }
+            }
+
+            // Delay the render (seat rotation) so money animation plays from the old position first
+            const renderDelay = (actionType === 'fold' || ['call', 'bet', 'raise', 'all-in'].includes(actionType)) ? 400 : 0;
+
+            setTimeout(() => {
+                this._renderLocalState();
+
+                // ── Win animation (after seats have settled) ──
+                if (isShowdown && newState.winners.length > 0) {
+                    setTimeout(() => {
+                        newState.winners.forEach(w => {
+                            const winnerSeatEl = this._localSeatElements[w.playerIndex];
+                            this._animateWinFromPot('local-pot-money', winnerSeatEl);
+                        });
+                    }, 700);
+                }
+            }, renderDelay);
         } catch (err) {
             this.ui.showError(err.message);
+        }
+    }
+
+    /** Animate cards flying from a seat to the table center (fold) */
+    _animateFoldCards(seatRect) {
+        const table = document.querySelector('#local-play-screen .poker-table');
+        if (!table) return;
+        const tableRect = table.getBoundingClientRect();
+        const destX = tableRect.left + tableRect.width / 2;
+        const destY = tableRect.top + tableRect.height / 2;
+
+        for (let i = 0; i < 2; i++) {
+            const card = document.createElement('div');
+            card.className = 'fold-card-fly';
+            card.textContent = '\uD83C\uDCA0'; // card back emoji
+            card.style.left = (seatRect.left + seatRect.width / 2 + (i - 0.5) * 16) + 'px';
+            card.style.top = (seatRect.top + seatRect.height / 2) + 'px';
+            card.style.transition = `left 0.45s ease-in, top 0.45s ease-in, opacity 0.45s ease-in, transform 0.45s ease-in`;
+            card.style.transitionDelay = (i * 0.08) + 's';
+            document.body.appendChild(card);
+
+            requestAnimationFrame(() => {
+                card.style.left = destX + 'px';
+                card.style.top = destY + 'px';
+                card.style.opacity = '0';
+                card.style.transform = `scale(0.4) rotate(${(i - 0.5) * 40}deg)`;
+            });
+
+            setTimeout(() => card.remove(), 600);
         }
     }
 
@@ -691,50 +819,49 @@ class PokerApp {
         this._armedAction = null;
         document.querySelectorAll('#local-action-controls .action-btn').forEach(b => b.classList.remove('armed'));
 
-        // ── Turn banner ──
-        const banner = document.getElementById('turn-banner');
-        const turnName = document.getElementById('turn-player-name');
-        const turnInfo = document.getElementById('turn-info-text');
-        if (isShowdown || isHandComplete) {
-            banner.classList.add('hidden');
-        } else {
-            banner.classList.remove('hidden');
-            turnName.textContent = `${activePlayer.name}'s Turn`;
-            turnInfo.textContent = 'Tap your cards to peek, then choose an action.';
-        }
+        // Players stay in fixed seat positions; active highlight moves around the table
 
-        // ── Player seats (around the table) ──
-        const seatsContainer = document.getElementById('local-player-seats');
-        seatsContainer.innerHTML = '';
+        // Seat position coordinates (center-point %) for each of the 9 slots
+        const SEAT_COORDS = [
+            { top: '-1%',   left: '50%' },   // 0: top center
+            { top: '22%',   left: '101%' },  // 1: upper right
+            { top: '78%',   left: '101%' },  // 2: lower right
+            { top: '101%',  left: '70%' },   // 3: bottom right
+            { top: '101%',  left: '30%' },   // 4: bottom left
+            { top: '78%',   left: '-1%' },   // 5: lower left
+            { top: '22%',   left: '-1%' },   // 6: upper left
+            { top: '-1%',   left: '28%' },   // 7: top left
+            { top: '-1%',   left: '72%' },   // 8: top right
+        ];
+
+        // ── Update persistent seat elements ──
         state.players.forEach((p, i) => {
+            const seat = this._localSeatElements[i];
             const seatPos = this._localSeatMap[i];
-            const seat = document.createElement('div');
-            seat.className = 'player-seat occupied';
+            const coords = SEAT_COORDS[seatPos];
+
+            // Position via inline styles (enables CSS transition)
+            seat.style.top = coords.top;
+            seat.style.left = coords.left;
             seat.setAttribute('data-position', seatPos);
+
+            // Classes
+            seat.className = 'player-seat occupied local-seat-animated';
             if (i === state.activePlayerIndex && !isShowdown && !isHandComplete) seat.classList.add('active');
             if (i === state.dealerIndex) seat.classList.add('dealer');
-            if (p.status === 'folded') seat.style.opacity = '0.4';
+            if (p.status === 'folded') seat.classList.add('folded');
 
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'player-name';
-            nameDiv.textContent = p.name;
-
-            const chipsDiv = document.createElement('div');
-            chipsDiv.className = 'player-chips';
-            chipsDiv.textContent = `$${p.chips}`;
-
-            const statusDiv = document.createElement('div');
-            statusDiv.className = 'player-status';
+            // Content updates
+            seat.querySelector('.player-name').textContent = p.name;
+            seat.querySelector('.player-chips').textContent = `$${p.chips}`;
+            const statusDiv = seat.querySelector('.player-status');
             if (p.currentBet > 0) {
                 statusDiv.textContent = `Bet: $${p.currentBet}`;
             } else if (p.status !== 'active') {
                 statusDiv.textContent = p.status;
+            } else {
+                statusDiv.textContent = '';
             }
-
-            seat.appendChild(nameDiv);
-            seat.appendChild(chipsDiv);
-            seat.appendChild(statusDiv);
-            seatsContainer.appendChild(seat);
         });
 
         // ── Community cards (face-up on the table) ──
@@ -757,7 +884,25 @@ class PokerApp {
         // ── Pot info ──
         document.getElementById('local-pot').textContent = state.pot;
         document.getElementById('local-current-bet').textContent = state.currentBetAmount;
-        this._renderPotMoney('local-pot-money', state.pot);
+        this._renderPlayerBets('local-player-bets', state.players);
+
+        // ── Side pots display ──
+        let sidePotsEl = document.getElementById('local-side-pots');
+        if (!sidePotsEl) {
+            sidePotsEl = document.createElement('div');
+            sidePotsEl.id = 'local-side-pots';
+            sidePotsEl.className = 'side-pots-info';
+            document.querySelector('#local-play-screen .pot-info').appendChild(sidePotsEl);
+        }
+        if (state.sidePots && state.sidePots.length > 1) {
+            sidePotsEl.innerHTML = state.sidePots.map((sp, idx) =>
+                `<span class="side-pot-badge">${idx === 0 ? 'Main' : 'Side ' + idx}: $${sp.amount}</span>`
+            ).join('');
+            sidePotsEl.classList.remove('hidden');
+        } else {
+            sidePotsEl.innerHTML = '';
+            sidePotsEl.classList.add('hidden');
+        }
 
         // ── Hole cards (both flip together, single counter) ──
         const playerArea = document.getElementById('local-player-area');
@@ -768,6 +913,7 @@ class PokerApp {
             playerArea.classList.add('hidden');
         } else {
             playerArea.classList.remove('hidden');
+            document.getElementById('local-active-player-name').textContent = activePlayer.name;
             document.getElementById('local-player-chips').textContent = activePlayer.chips;
             document.getElementById('local-player-bet').textContent = activePlayer.currentBet;
 
@@ -817,21 +963,24 @@ class PokerApp {
                 winnerText.textContent = `Winner: ${winnerNames}`;
             }
 
-            // Show all players' cards
+            // Show all players' cards (skip if win was by fold — "unopposed")
             const showdownCards = document.getElementById('local-showdown-cards');
             showdownCards.innerHTML = '';
-            state.players.forEach((p, i) => {
-                const player = this.localGame.players[i];
-                if (player.holeCards.length === 0) return;
-                const div = document.createElement('div');
-                div.className = 'showdown-player';
-                let cardsHTML = '';
-                player.holeCards.forEach(card => {
-                    cardsHTML += `<div class="revealed-card ${card.suit}">${card.rank}${SUIT_SYMBOLS[card.suit] || ''}</div>`;
+            const wonByFold = state.winners.length > 0 && state.winners.every(w => w.handType === 'unopposed');
+            if (!wonByFold) {
+                state.players.forEach((p, i) => {
+                    const player = this.localGame.players[i];
+                    if (player.holeCards.length === 0) return;
+                    const div = document.createElement('div');
+                    div.className = 'showdown-player';
+                    let cardsHTML = '';
+                    player.holeCards.forEach(card => {
+                        cardsHTML += `<div class="revealed-card ${card.suit}">${card.rank}${SUIT_SYMBOLS[card.suit] || ''}</div>`;
+                    });
+                    div.innerHTML = `<div class="showdown-name">${this._escapeHtml(p.name)} ${p.status === 'folded' ? '(folded)' : ''}</div><div class="showdown-hand">${cardsHTML}</div>`;
+                    showdownCards.appendChild(div);
                 });
-                div.innerHTML = `<div class="showdown-name">${this._escapeHtml(p.name)} ${p.status === 'folded' ? '(folded)' : ''}</div><div class="showdown-hand">${cardsHTML}</div>`;
-                showdownCards.appendChild(div);
-            });
+            }
         } else {
             actionControls.classList.remove('hidden');
             showdownDiv.classList.add('hidden');
@@ -1005,12 +1154,74 @@ class PokerApp {
                 document.getElementById('local-bet-amount').value = p.value;
                 container.querySelectorAll('.raise-preset-btn').forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
+
+                // Pre-arm the raise button so only one tap is needed
+                const raiseBtn = document.getElementById('local-bet-raise-btn');
+                this._armedAction = raiseBtn;
+                document.querySelectorAll('#local-action-controls .action-btn').forEach(b => b.classList.remove('armed'));
+                raiseBtn.classList.add('armed');
             });
             container.appendChild(btn);
         }
     }
 
     // ── Pot Money Visuals ──
+
+    /** Render scattered coins/bills on the table for current bets — only adds new, never moves existing */
+    _renderPlayerBets(containerId, players) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // If all bets are zero (new round), clear everything
+        const anyBets = players.some(p => p.currentBet > 0);
+        if (!anyBets) {
+            container.innerHTML = '';
+            this._localTrackedBets = {};
+            return;
+        }
+
+        const seededRand = () => {
+            this._localCoinSeed = (this._localCoinSeed * 16807 + 0) % 2147483647;
+            return this._localCoinSeed / 2147483647;
+        };
+
+        // Pick emoji: bills for amounts >= 50, coins for smaller
+        const pickEmoji = (amount) => {
+            if (amount >= 500) return '💸';
+            if (amount >= 50) return '💵';
+            return '🪙';
+        };
+
+        players.forEach(p => {
+            const prevBet = this._localTrackedBets[p.id] || 0;
+            const curBet = p.currentBet;
+
+            if (curBet > prevBet) {
+                const added = curBet - prevBet;
+                const newCoins = added > 200 ? 4 : added > 50 ? 3 : 2;
+
+                for (let i = 0; i < newCoins; i++) {
+                    // Place in lower semicircle only (angle π/6 to 5π/6 → below center)
+                    const angle = (Math.PI / 6) + seededRand() * (4 * Math.PI / 6);
+                    const dist = (seededRand() + seededRand()) / 2; // bias toward center
+                    const radius = 25 + dist * 23; // 25-48% from center (well clear of pot area)
+
+                    const x = 50 + Math.cos(angle) * radius;
+                    const y = 50 + Math.sin(angle) * radius;
+
+                    const coin = document.createElement('span');
+                    coin.className = 'bet-coin';
+                    coin.textContent = pickEmoji(added);
+                    coin.style.left = x + '%';
+                    coin.style.top = y + '%';
+                    coin.style.animationDelay = (i * 0.08) + 's';
+                    container.appendChild(coin);
+                }
+            }
+
+            this._localTrackedBets[p.id] = curBet;
+        });
+    }
 
     /** Render coin/bill emojis in the pot-money container based on pot size */
     _renderPotMoney(containerId, potAmount) {

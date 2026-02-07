@@ -6,7 +6,24 @@ export class PokerUI {
         this.setupModalEvents();
     }
 
-    showScreen(screenId, updateHash = true) {
+    // Map screen IDs to URL paths
+    static SCREEN_PATHS = {
+        'welcome': '/',
+        'create-room': '/rooms/create',
+        'join-room': '/rooms/join',
+        'browse-rooms': '/rooms/browse',
+        'local-game': '/play',
+        'local-play': '/play/game',
+        'game-room': null // managed separately with room invite codes
+    };
+
+    static PATH_TO_SCREEN = Object.fromEntries(
+        Object.entries(PokerUI.SCREEN_PATHS)
+            .filter(([, v]) => v !== null)
+            .map(([k, v]) => [v, k])
+    );
+
+    showScreen(screenId, updateUrl = true) {
         // Hide all screens
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.add('hidden');
@@ -19,11 +36,11 @@ export class PokerUI {
             this.currentScreen = screenId;
         }
 
-        // Update URL hash for navigation state
-        if (updateHash) {
-            const hash = screenId === 'welcome' ? '' : screenId;
-            if (window.location.hash !== `#${hash}`) {
-                window.history.pushState(null, '', hash ? `#${hash}` : window.location.pathname);
+        // Update URL path for navigation state
+        if (updateUrl) {
+            const targetPath = PokerUI.SCREEN_PATHS[screenId] || '/';
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
             }
         }
     }

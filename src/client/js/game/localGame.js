@@ -38,6 +38,7 @@ export class LocalGame {
         this.currentHand = 0;
         this.gamePhase = 'waiting'; // waiting | pre-flop | flop | turn | river | showdown | hand-complete
         this.winners = [];
+        this.sidePots = [];
         this.lastAction = null;
         this.handHistory = [];
 
@@ -60,6 +61,7 @@ export class LocalGame {
         this.currentBetAmount = 0;
         this.minimumRaise = this.settings.bigBlind;
         this.winners = [];
+        this.sidePots = [];
         this.lastAction = null;
         this.handHistory = [];
         this._actedThisRound = new Set();
@@ -217,6 +219,7 @@ export class LocalGame {
                 position: p.position
             })),
             winners: this.winners,
+            sidePots: this.sidePots,
             lastAction: this.lastAction,
             settings: this.settings
         };
@@ -342,13 +345,48 @@ export class LocalGame {
         }
     }
 
+    /**
+     * Calculate side pots based on each player's totalBetThisHand.
+     * Returns an array of { amount, eligible: [playerIndex, ...] }.
+     */
+    _calculateSidePots() {
+        // Gather all players who have invested chips this hand
+        const contribs = this.players
+            .map((p, i) => ({ index: i, total: p.totalBetThisHand, inHand: p.status === 'active' || p.status === 'all-in' }))
+            .filter(c => c.total > 0);
+
+        // Sort by total bet ascending so we can peel pots
+        contribs.sort((a, b) => a.total - b.total);
+
+        const pots = [];
+        let processed = 0; // cumulative level already accounted for
+
+        for (let i = 0; i < contribs.length; i++) {
+            const level = contribs[i].total;
+            if (level <= processed) continue; // skip duplicate levels
+
+            const increment = level - processed;
+            // Every contributor with total >= level pays "increment" into this pot
+            const contributors = contribs.filter(c => c.total >= level);
+            const potAmount = increment * contributors.length;
+            // Only players still in hand (not folded) are eligible to win
+            const eligible = contributors.filter(c => c.inHand).map(c => c.index);
+
+            pots.push({ amount: potAmount, eligible });
+            processed = level;
+        }
+
+        return pots;
+    }
+
     _resolveHand() {
         const inHand = this._playersInHand();
 
         if (inHand.length === 1) {
-            // Unopposed winner
+            // Unopposed winner — gets everything
             const winner = inHand[0];
             this.winners = [{ playerIndex: this.players.indexOf(winner), name: winner.name, amount: this.pot, handType: 'unopposed' }];
+            winner.chips += this.pot;
         } else {
             // Deal remaining community cards if needed
             while (this.communityCards.length < 5) {
@@ -359,32 +397,51 @@ export class LocalGame {
             // Evaluate hands
             const evaluated = inHand.map(p => {
                 const best = findBestHand(p.holeCards, this.communityCards);
-                return { player: p, rank: best.rank, cards: best.cards };
+                return { player: p, index: this.players.indexOf(p), rank: best.rank, cards: best.cards };
             });
 
+            // Sort by hand strength (best first)
             evaluated.sort((a, b) => {
                 if (a.rank.value !== b.rank.value) return b.rank.value - a.rank.value;
                 return b.rank.high - a.rank.high;
             });
 
-            const bestRank = evaluated[0].rank;
-            const winnerEntries = evaluated.filter(e =>
-                e.rank.value === bestRank.value && e.rank.high === bestRank.high
-            );
+            // Calculate side pots and distribute
+            const sidePots = this._calculateSidePots();
+            this.sidePots = sidePots; // store for UI
 
-            const share = Math.floor(this.pot / winnerEntries.length);
-            this.winners = winnerEntries.map(e => ({
-                playerIndex: this.players.indexOf(e.player),
-                name: e.player.name,
-                amount: share,
-                handType: e.rank.type
-            }));
+            this.winners = [];
+            const winMap = new Map(); // playerIndex -> { amount, handType, name }
+
+            for (const pot of sidePots) {
+                // Find best hand among eligible players for this pot
+                const eligibleEval = evaluated.filter(e => pot.eligible.includes(e.index));
+                if (eligibleEval.length === 0) continue;
+
+                const bestRank = eligibleEval[0].rank;
+                const potWinners = eligibleEval.filter(e =>
+                    e.rank.value === bestRank.value && e.rank.high === bestRank.high
+                );
+
+                const share = Math.floor(pot.amount / potWinners.length);
+                for (const w of potWinners) {
+                    w.player.chips += share;
+                    const existing = winMap.get(w.index);
+                    if (existing) {
+                        existing.amount += share;
+                    } else {
+                        winMap.set(w.index, {
+                            playerIndex: w.index,
+                            name: w.player.name,
+                            amount: share,
+                            handType: w.rank.type
+                        });
+                    }
+                }
+            }
+
+            this.winners = Array.from(winMap.values());
         }
-
-        // Distribute winnings
-        this.winners.forEach(w => {
-            this.players[w.playerIndex].chips += w.amount;
-        });
 
         this.gamePhase = 'showdown';
     }

@@ -1,4 +1,6 @@
 // Game client for Socket.IO communication
+import { io } from 'socket.io-client';
+
 export class GameClient {
     constructor() {
         this.socket = null;

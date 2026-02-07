@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== Gym Logger Version Reset Script ===" -ForegroundColor Cyan
+Write-Host "=== Texas Hold'em Poker - Version Reset Script ===" -ForegroundColor Cyan
 Write-Host ""
 
 # Fixed timestamp for version control
@@ -11,65 +11,33 @@ $fixedTimestamp = "00000000000000"
 Write-Host "Resetting to fixed version: $fixedTimestamp" -ForegroundColor Green
 
 # Reset service worker version
-$swPath = "GymLogger\wwwroot\service-worker.js"
-$swContent = Get-Content $swPath -Raw
-
-# Extract current version
-if ($swContent -match "const CACHE_VERSION = 'v([^']+)';") {
-    $currentVersion = $matches[1]
-    Write-Host "Service Worker: v$currentVersion -> v$fixedTimestamp" -ForegroundColor Green
-    
-    # Update service worker version with fixed timestamp
-    $swContent = $swContent -replace "const CACHE_VERSION = 'v[^']+';", "const CACHE_VERSION = 'v$fixedTimestamp';"
-    $swContent | Set-Content $swPath -NoNewline
-    Write-Host "✓ Reset service-worker.js" -ForegroundColor Green
-} else {
-    Write-Host "✗ Could not find CACHE_VERSION in service-worker.js" -ForegroundColor Red
+$swPath = "src\client\public\sw.js"
+if (-not (Test-Path $swPath)) {
+    Write-Host "✗ Service worker not found at: $swPath" -ForegroundColor Red
     exit 1
 }
 
-# Reset version parameters in HTML files
-Write-Host ""
-Write-Host "Resetting version parameters..." -ForegroundColor Cyan
+$swContent = Get-Content $swPath -Raw
 
-$htmlFiles = Get-ChildItem "GymLogger\wwwroot" -Filter "*.html" -Recurse
-foreach ($file in $htmlFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$fixedTimestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Reset $($file.Name)" -ForegroundColor Green
-    }
-}
-
-# Reset version parameters in JS files
-$jsFiles = Get-ChildItem "GymLogger\wwwroot\js" -Filter "*.js" -Recurse
-foreach ($file in $jsFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$fixedTimestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Reset $($file.Name)" -ForegroundColor Green
-    }
-}
-
-# Reset CSS references
-$cssFiles = Get-ChildItem "GymLogger\wwwroot\css" -Filter "*.css" -Recurse -ErrorAction SilentlyContinue
-foreach ($file in $cssFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$fixedTimestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Reset $($file.Name)" -ForegroundColor Green
-    }
+# Extract current version
+if ($swContent -match "const CACHE_NAME = 'poker-v([^']+)';") {
+    $currentVersion = $matches[1]
+    Write-Host "Service Worker: poker-v$currentVersion -> poker-v$fixedTimestamp" -ForegroundColor Green
+    
+    # Update service worker cache name with fixed timestamp
+    $swContent = $swContent -replace "const CACHE_NAME = 'poker-v[^']+';", "const CACHE_NAME = 'poker-v$fixedTimestamp';"
+    $swContent | Set-Content $swPath -NoNewline
+    Write-Host "✓ Reset sw.js" -ForegroundColor Green
+} else {
+    Write-Host "✗ Could not find CACHE_NAME in sw.js" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host ""
 Write-Host "=== Version Reset Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Summary:" -ForegroundColor Yellow
-Write-Host "  Service Worker Version: v$fixedTimestamp" -ForegroundColor White
-Write-Host "  Asset Version: $fixedTimestamp" -ForegroundColor White
+Write-Host "  Service Worker Version: poker-v$fixedTimestamp" -ForegroundColor White
 Write-Host ""
 Write-Host "Ready to commit!" -ForegroundColor Green
 Write-Host ""

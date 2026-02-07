@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== Gym Logger Deployment Update Script ===" -ForegroundColor Cyan
+Write-Host "=== Texas Hold'em Poker - Deployment Update Script ===" -ForegroundColor Cyan
 Write-Host ""
 
 # Get current timestamp for version parameter
@@ -11,70 +11,38 @@ $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 Write-Host "New version timestamp: $timestamp" -ForegroundColor Green
 
 # Read current service worker version
-$swPath = "GymLogger\wwwroot\service-worker.js"
-$swContent = Get-Content $swPath -Raw
-
-# Extract current version
-if ($swContent -match "const CACHE_VERSION = 'v([^']+)';") {
-    $currentVersion = $matches[1]
-    $newVersion = $timestamp
-    Write-Host "Service Worker: v$currentVersion -> v$newVersion" -ForegroundColor Green
-    
-    # Update service worker version with timestamp
-    $swContent = $swContent -replace "const CACHE_VERSION = 'v[^']+';", "const CACHE_VERSION = 'v$newVersion';"
-    $swContent | Set-Content $swPath -NoNewline
-    Write-Host "✓ Updated service-worker.js" -ForegroundColor Green
-} else {
-    Write-Host "✗ Could not find CACHE_VERSION in service-worker.js" -ForegroundColor Red
+$swPath = "src\client\public\sw.js"
+if (-not (Test-Path $swPath)) {
+    Write-Host "✗ Service worker not found at: $swPath" -ForegroundColor Red
     exit 1
 }
 
-# Update version parameters in HTML files
-Write-Host ""
-Write-Host "Updating version parameters..." -ForegroundColor Cyan
+$swContent = Get-Content $swPath -Raw
 
-$htmlFiles = Get-ChildItem "GymLogger\wwwroot" -Filter "*.html" -Recurse
-foreach ($file in $htmlFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$timestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Updated $($file.Name)" -ForegroundColor Green
-    }
-}
-
-# Update version parameters in JS files
-$jsFiles = Get-ChildItem "GymLogger\wwwroot\js" -Filter "*.js" -Recurse
-foreach ($file in $jsFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$timestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Updated $($file.Name)" -ForegroundColor Green
-    }
-}
-
-# Update CSS references
-$cssFiles = Get-ChildItem "GymLogger\wwwroot\css" -Filter "*.css" -Recurse -ErrorAction SilentlyContinue
-foreach ($file in $cssFiles) {
-    $content = Get-Content $file.FullName -Raw
-    $updated = $content -replace '\?v=\d+', "?v=$timestamp"
-    if ($content -ne $updated) {
-        $updated | Set-Content $file.FullName -NoNewline
-        Write-Host "✓ Updated $($file.Name)" -ForegroundColor Green
-    }
+# Extract current version and update
+if ($swContent -match "const CACHE_NAME = 'poker-v([^']+)';") {
+    $currentVersion = $matches[1]
+    $newVersion = $timestamp
+    Write-Host "Service Worker: poker-v$currentVersion -> poker-v$newVersion" -ForegroundColor Green
+    
+    # Update service worker cache name with timestamp
+    $swContent = $swContent -replace "const CACHE_NAME = 'poker-v[^']+';", "const CACHE_NAME = 'poker-v$newVersion';"
+    $swContent | Set-Content $swPath -NoNewline
+    Write-Host "✓ Updated sw.js" -ForegroundColor Green
+} else {
+    Write-Host "✗ Could not find CACHE_NAME in sw.js" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host ""
 Write-Host "=== Deployment Update Complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Summary:" -ForegroundColor Yellow
-Write-Host "  Service Worker Version: v$newVersion" -ForegroundColor White
-Write-Host "  Asset Version: $timestamp" -ForegroundColor White
+Write-Host "  Service Worker Version: poker-v$newVersion" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  1. Build the project: dotnet build" -ForegroundColor White
-Write-Host "  2. Test locally: dotnet run" -ForegroundColor White
+Write-Host "  1. Build the project: npm run build" -ForegroundColor White
+Write-Host "  2. Test locally: npm run dev" -ForegroundColor White
 Write-Host "  3. Deploy to production" -ForegroundColor White
 Write-Host ""
 Write-Host "Users will see an update notification when they return to the app!" -ForegroundColor Green
