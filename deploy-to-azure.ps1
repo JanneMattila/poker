@@ -194,14 +194,6 @@ Copy-Item -Path "package.json" -Destination "$stagingPath\package.json"
 Copy-Item -Path "package-lock.json" -Destination "$stagingPath\package-lock.json" -ErrorAction SilentlyContinue
 
 # Create production startup script
-@"
-{
-  "scripts": {
-    "start": "node src/server/server.js"
-  }
-}
-"@ | Out-File -FilePath "$stagingPath\web.config.json" -Encoding utf8
-
 Write-Info "Staging folder created"
 
 # Create zip from staging
